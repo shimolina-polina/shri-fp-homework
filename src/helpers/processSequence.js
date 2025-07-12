@@ -27,7 +27,8 @@ import {
   modulo,
   ifElse,
   prop,
-  tap,
+  converge,
+  identity,
 } from "ramda";
 import Api from "../tools/api";
 
@@ -45,10 +46,7 @@ const isNumValid = allPass([
 
 const roundNumber = pipe(Number, Math.round);
 const extractResult = prop("result");
-const calculateSquareLength = pipe(
-  length,
-  (len) => multiply(len, len)
-);
+const calculateSquareLength = pipe(length, converge(multiply, [identity, identity]));
 const calculateRemainder = modulo(__, 3);
 
 const logAndGoOn = (writeLog) => (value) => {
@@ -59,12 +57,10 @@ const logAndGoOn = (writeLog) => (value) => {
 const asyncPipe =
   (...fns) =>
   async (value) => {
-    let result = Either.Right(value);
-    for (const fn of fns) {
-      if (result.isLeft) break;
-      result = await result.chain(fn);
-    }
-    return result;
+    return fns.reduce(async (acc, fn) => {
+      const result = await acc;
+      return result.isLeft ? result : await result.chain(fn);
+    }, Either.Right(value));
   };
 
 const Either = {
