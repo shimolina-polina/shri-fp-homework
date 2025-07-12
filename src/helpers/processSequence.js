@@ -46,7 +46,7 @@ const isNumValid = allPass([
 
 const roundNumber = pipe(Number, Math.round);
 const extractResult = prop("result");
-const calculateSquareLength = pipe(length, converge(multiply, [identity, identity]));
+const calculateSquareLength = converge(multiply, [identity, identity]);
 const calculateRemainder = modulo(__, 3);
 
 const logAndGoOn = (writeLog) => (value) => {
@@ -121,13 +121,15 @@ const processSequence = async ({
     async (number) => safeApiCall(() => getBinaryNumber(number)),
     extractResult,
     log,
+    length,
+    log,
+    
     calculateSquareLength,
     log,
     calculateRemainder,
     log,
     async (remainder) => safeApiCall(() => getAnimal(remainder)),
     extractResult,
-    log
   )(value);
 
   return result.fold(handleError, handleSuccess);
