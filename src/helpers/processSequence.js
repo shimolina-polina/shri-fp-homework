@@ -14,38 +14,127 @@
  * Иногда промисы от API будут приходить в состояние rejected, (прямо как и API в реальной жизни)
  * Ответ будет приходить в поле {result}
  */
- import Api from '../tools/api';
+import {
+  allPass,
+  pipe,
+  length,
+  gte,
+  lte,
+  __,
+  gt,
+  test,
+  multiply,
+  modulo,
+  ifElse,
+  prop,
+  tap,
+} from "ramda";
+import Api from "../tools/api";
 
- const api = new Api();
+const api = new Api();
 
- /**
-  * Я – пример, удали меня
-  */
- const wait = time => new Promise(resolve => {
-     setTimeout(resolve, time);
- })
+const isPositive = gt(__, 0);
+const isValidFormat = test(/^[0-9]+\.?[0-9]*$/);
 
- const processSequence = ({value, writeLog, handleSuccess, handleError}) => {
-     /**
-      * Я – пример, удали меня
-      */
-     writeLog(value);
+const isNumValid = allPass([
+  pipe(length, gte(__, 3)),
+  pipe(length, lte(__, 9)),
+  pipe(Number, isPositive),
+  isValidFormat,
+]);
 
-     api.get('https://api.tech/numbers/base', {from: 2, to: 10, number: '01011010101'}).then(({result}) => {
-         writeLog(result);
-     });
+const roundNumber = pipe(Number, Math.round);
+const extractResult = prop("result");
+const calculateSquareLength = pipe(
+  length,
+  (len) => multiply(len, len)
+);
+const calculateRemainder = modulo(__, 3);
 
-     wait(2500).then(() => {
-         writeLog('SecondLog')
+const logAndGoOn = (writeLog) => (value) => {
+  writeLog(value);
+  return value;
+};
 
-         return wait(1500);
-     }).then(() => {
-         writeLog('ThirdLog');
+const asyncPipe =
+  (...fns) =>
+  async (value) => {
+    let result = Either.Right(value);
+    for (const fn of fns) {
+      if (result.isLeft) break;
+      result = await result.chain(fn);
+    }
+    return result;
+  };
 
-         return wait(400);
-     }).then(() => {
-         handleSuccess('Done');
-     });
- }
+const Either = {
+  Left: (value) => ({
+    isLeft: true,
+    isRight: false,
+    value,
+    map: () => Either.Left(value),
+    chain: () => Either.Left(value),
+    fold: (leftFn, _) => leftFn(value),
+  }),
+  Right: (value) => ({
+    isLeft: false,
+    isRight: true,
+    value,
+    map: (fn) => Either.Right(fn(value)),
+    chain: async (fn) => {
+      const result = await fn(value);
+      return result && result.isLeft !== undefined
+        ? result
+        : Either.Right(result);
+    },
+    fold: (_, rightFn) => rightFn(value),
+  }),
+};
+
+const validateStr = ifElse(isNumValid, Either.Right, () =>
+  Either.Left("ValidationError")
+);
+
+const safeApiCall = async (apiCall) => {
+  try {
+    const result = await apiCall();
+    return Either.Right(result);
+  } catch (error) {
+    return Either.Left(error);
+  }
+};
+
+const getBinaryNumber = (number) =>
+  api.get("https://api.tech/numbers/base", { from: 10, to: 2, number });
+
+const getAnimal = (id) => api.get(`https://animals.tech/${id}`, {});
+
+const processSequence = async ({
+  value,
+  writeLog,
+  handleSuccess,
+  handleError,
+}) => {
+  const log = logAndGoOn(writeLog);
+
+  const result = await asyncPipe(
+    log,
+    validateStr,
+    roundNumber,
+    log,
+    async (number) => safeApiCall(() => getBinaryNumber(number)),
+    extractResult,
+    log,
+    calculateSquareLength,
+    log,
+    calculateRemainder,
+    log,
+    async (remainder) => safeApiCall(() => getAnimal(remainder)),
+    extractResult,
+    log
+  )(value);
+
+  return result.fold(handleError, handleSuccess);
+};
 
 export default processSequence;
